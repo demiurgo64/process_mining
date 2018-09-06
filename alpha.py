@@ -5,6 +5,7 @@ import csv
 def log_import(file):
     log = dict()
     activity= dict()
+    counter=0
     with open(file, 'r') as csvfile:
         spamreader = csv.reader(csvfile, delimiter=';',quotechar='"')
         for row in spamreader:
@@ -17,7 +18,8 @@ def log_import(file):
             event = (task, user, timestamp)
             log[caseid].append(event)
             if task not in activity.keys():
-                activity[task]=1
+                activity[task]=counter
+                counter+=1
     
     return log, activity
 
@@ -141,7 +143,7 @@ def get_Y(X):
                     Y.discard(i)
     return Y
 
-def plot_petri(st,et,Y):
+def plot_petri(st,et,Y,name):
     p = pgv.AGraph(strict=False, directed=True)
     p.graph_attr['rankdir'] = 'LR'
     p.node_attr['shape'] = 'box'
@@ -149,7 +151,7 @@ def plot_petri(st,et,Y):
         for i in item[0]:
             p.add_edge(i,str(item))
             p.add_node(i, shape='box')
-            p.add_node(str(item), shape='circle')
+            p.add_node(str(item), shape='circle', label='')
         for i in item[1]:
             p.add_edge(str(item), i)
             p.add_node(i, shape='box')
@@ -159,13 +161,14 @@ def plot_petri(st,et,Y):
         p.add_edge('inicio',i)
     for i in et:
         p.add_edge(i,'fin')
-    p.draw('graph1.png', prog='dot')
+    p.draw(name[:-4]+'.png', prog='dot')
 
-def test():
-    log, activity=log_import('log_base.csv')
+def test(file):
+    log, activity=log_import(file)
     F=direct(log)
     C=causality(F)
     P=parallel(F)
     CH=choice(F,activity)
     st, et=start_end(log)
     X=get_X(activity,C,CH)
+    plot_petri(st,et,Y,file)
