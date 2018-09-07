@@ -58,8 +58,11 @@ def graphic_flow(DM, act, name):
     p.node_attr['shape'] = 'box'
     p.add_node('inicio')
     p.add_node('fin')
+    check=np.zeros(DM.shape)
     for i in range(0, DM.shape[0]):#i equal from Create connection with best value
         to=np.argmax(DM[i,:])
+        check[i,to]+=1
+        check[to,i]-=1
         p.add_edge(list(act.keys())[list(act.values()).index(i)], \
                    list(act.keys())[list(act.values()).index(to)])
         p.add_node(list(act.keys())[list(act.values()).index(i)], shape='box')
@@ -68,5 +71,19 @@ def graphic_flow(DM, act, name):
             p.add_edge('inicio',list(act.keys())[list(act.values()).index(i)])
         if np.all(DM[i,:]<=0):
             p.add_edge(list(act.keys())[list(act.values()).index(i)], 'fin')
+    for i in range(0,DM.shape[0]):#all-connect activities
+            if not np.any(check[i,:]<0):
+                after=DM[i,:].argsort()[:2][1]
+                p.add_edge(list(act.keys())[list(act.values()).index(after)], \
+                   list(act.keys())[list(act.values()).index(i)])
+                check[i,after]=-1
+                check[after,i]=1
+            if not np.any(check[i,:]>0):
+                before=DM[i,:].argsort()[::-1][:2][1]
+                p.add_edge(list(act.keys())[list(act.values()).index(i)], \
+                   list(act.keys())[list(act.values()).index(before)])
+                check[i,before]=1
+                check[before,i]=-1
     p.draw(name[:-4]+'.png', prog='dot')
+    return check
 
