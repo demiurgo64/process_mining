@@ -13,16 +13,14 @@ def dependency_matrix(M, LL, LD, MC):
                 DM[j,i]=M[i,j]/(M[i,j]+1) #Short loop one-length
             DLL[j,i]=(LL[i,j]+LL[j,i])/(LL[i,j]+LL[j,i]+1) #Short loop two-length
             DLD[j,i]=(LD[i,j]/MC[i]) #Long distance dependency
-    return DM, DLL, DLD
-
-def causal_matrix(M):
-    size=M.shape[0]
-    CM=np.zeros(size,size,size)
+            
+    CM=np.zeros((size,size,size)) #AND, OR and Hidden activities
     for k in range(0,size-1):
         for i in range(0, size-1):
             for j in range(0,size-1):
                 CM[k,j,i]=(M[i,j]+M[j,i])/(M[k,i]+M[k,j]+1) #And or Or activities
-    return CM
+    
+    return DM, DLL, DLD, CM
 
 def frecuency(log,act):
     size=len(act)
