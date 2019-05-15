@@ -1,5 +1,6 @@
 import csv
 import itertools as it
+import numpy as np
 
 class ACO(object):
     def __init__(self, ant_cant:int, generation:int, alpha:float,
@@ -133,7 +134,27 @@ class Log(object):
                     acum+=prob[ai][i]
                     prob[ai][i]=acum
         return prob
-        
+    
+    def convertList(self, dic:dict):
+        for ai in dic.keys():
+            i=0
+            while(i<len(dic[ai])):
+            #for i in range(len(dic[ai])):
+                if(isinstance(dic[ai][i],list)):
+                    for j in range(len(dic[ai][i])):
+                        dic[ai].insert(i+j+1, dic[ai][i][j])
+                    del dic[ai][i]
+                i+=1
+        return dic
+    
+    def convertRoute(self, dic:dict):
+        for ai in dic.keys():
+            for i in range(len(dic[ai])):
+                if(len(dic[ai][i])>1):
+                    dic[ai].insert(i+1,dic[ai][i])
+                    dic[ai].insert(i+2,dic[ai][i])
+                    del dic[ai][i]
+        return dic
 class AntColony(object):
     def __init__(self, dist:dict, startAct:list, endAct:list):
         self.heuristic = dist
@@ -154,5 +175,7 @@ class AntColony(object):
                     pheromone[ai][i]=value
         return pheromone
     
-    #def createSolution(self):
-
+    def createSolution(self, quantity):
+        ants=[None]*quantity
+        for ant in ants:
+            self.stratAct
