@@ -1,4 +1,5 @@
 import csv
+import copy
 import itertools as it
 import numpy as np
 
@@ -156,14 +157,15 @@ class Log(object):
                     del dic[ai][i]
         return dic
 class AntColony(object):
-    def __init__(self, dist:dict, startAct:list, endAct:list):
-        self.heuristic = dist
-        self.fero = self.startPheromone()
+    def __init__(self, dist:dict, route:dict, startAct:list, endAct:list):
+        self.heuristic = dict(dist.copy())
+        self.route = route.copy()
+        self.phero = self.startPheromone()
         self.start = startAct
         self.end = endAct
         
     def startPheromone(self, value=0.5):
-        pheromone=self.heuristic
+        pheromone=copy.deepcopy(self.heuristic)
         for ai in pheromone.keys():
             for i in range(len(pheromone[ai])):
                 if (isinstance(pheromone[ai][i], list)):
@@ -175,7 +177,70 @@ class AntColony(object):
                     pheromone[ai][i]=value
         return pheromone
     
+    def probability(self):
+        matriz=copy.deepcopy(self.heuristic)
+        suma=copy.deepcopy(self.heuristic)
+        for ai in self.heuristic.keys():
+            suma[ai]=0
+            for i in range(len(self.heuristic[ai])):
+                suma[ai]+=self.heuristic[ai][i]*self.phero[ai][i]
+        for ai in self.heuristic.keys():
+            prev=0
+            for i in range(len(self.heuristic[ai])):
+                matriz[ai][i]=self.heuristic[ai][i]*self.phero[ai][i]/suma[ai]+prev
+                prev=matriz[ai][i]
+        return matriz
+    
     def createSolution(self, quantity):
         ants=[None]*quantity
-        for ant in ants:
-            self.stratAct
+        actSE=self.start
+        route=self.route #Get path
+        prob=self.probability() #Get prob per route
+        for p in range(quantity):
+            ant=['a']
+            #ant.append(lista[self.choose(lista)])
+            complete=False
+            while(complete==False):
+                step=ant[-1]
+                for i in step:
+                    if i not in actSE[1]:
+                        run=[''.join(x) if len(x)==1 else list(x) for x in route[i]]
+                        part=route[i][self.choose(prob[i])]
+                        ant.append(part)
+                    else:
+                        complete=True
+                if len(ant)>=4:
+                    complete= True
+            ants[p]=ant
+        return ants
+                
+    
+    def choose(self, lista:list):
+        """Get a random index form acumulative list.
+        
+        Args:
+            param1 (list): list of probabilities
+        Returns:
+            int: Position choose element."""
+        num=np.random.rand()
+        for i in lista:
+            print('value of list = %s' % str(i))
+            if i>num:
+                ind=lista.index(i)
+                break            
+        return ind
+
+
+
+log=Log('log_base.csv')
+activities=log.getStartEnd()
+F=log.direct()
+route=log.getRoute()
+prob=log.getInfo()
+heuristic=log.convertList(log.getInfoAcum())
+convertido=log.convertRoute(log.convertRoute(route))
+colonia=AntColony(heuristic,route, activities, activities[1])
+AntProb=colonia.probability()
+phero=colonia.startPheromone(0.5)
+#colonia.choose(AntProb['b'])
+colonia.createSolution(2)
