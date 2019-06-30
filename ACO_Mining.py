@@ -78,7 +78,7 @@ class Log(object):
     def getRoute(self):
         F=self.direct()
         route=dict()
-        for ai in sorted(F.keys()):
+        for ai in F.keys():
             if ai not in route:
                 route[ai]=list()
             count= len(F[ai].keys())
@@ -87,8 +87,8 @@ class Log(object):
         return route
     
     def getInfo(self):
-        route=self.getRoute()
-        F=self.direct()
+        route=copy.deepcopy(self.getRoute())
+        F=copy.deepcopy(self.direct())
         prob=dict()
         for ai in route.keys():
             if ai not in prob.keys():
@@ -148,18 +148,28 @@ class Log(object):
                 i+=1
         return dic
     
-    def convertRoute(self, dic:dict):
-        for ai in dic.keys():
-            for i in range(len(dic[ai])):
-                if(len(dic[ai][i])>1):
-                    dic[ai].insert(i+1,dic[ai][i])
-                    dic[ai].insert(i+2,dic[ai][i])
-                    del dic[ai][i]
-        return dic
+    def convertRoute(self, dic:dict):#revisar
+        dic=copy.deepcopy(dic)
+        relation=copy.deepcopy(dic)
+        for key, value in dic.items():
+            if(len(value)>1):
+                count=0
+                for i in value:
+                    if (len(i)==1):
+                        count+=1
+                par=len(dic[key][count:])
+                dic[key].extend(dic[key][count:])
+                relation[key]=[0]*count
+                relation[key].extend([1]*par)
+                relation[key].extend([2]*par)
+            else:
+                relation[key]=[0]
+        return dic, relation
 class AntColony(object):
-    def __init__(self, dist:dict, route:dict, startAct:list, endAct:list):
+    def __init__(self, dist:dict, route:dict, relation:dict, startAct:list, endAct:list):
         self.heuristic = dict(dist.copy())
-        self.route = route.copy()
+        self.route = copy.deepcopy(route)
+        self.relation = copy.deepcopy(relation)
         self.phero = self.startPheromone()
         self.start = startAct
         self.end = endAct
@@ -197,23 +207,23 @@ class AntColony(object):
         route=self.route #Get path
         prob=self.probability() #Get prob per route
         for p in range(quantity):
-            ant=['a']
-            #ant.append(lista[self.choose(lista)])
-            complete=False
-            while(complete==False):
-                step=ant[-1]
+            graph=dict()
+            ant=['a']#Routine for first element
+            step=ant[-1]
+            for j in ant:
+                step=j
                 for i in step:
                     if i not in actSE[1]:
-                        run=[''.join(x) if len(x)==1 else list(x) for x in route[i]]
                         part=route[i][self.choose(prob[i])]
-                        ant.append(part)
-                    else:
-                        complete=True
-                if len(ant)>=4:
-                    complete= True
-            ants[p]=ant
+                        if i not in graph.keys():
+                            graph[i]=list()
+                        new=[str(x) for x in part]
+                        if new not in  graph[i]:
+                            graph[i].append(new)
+                            ant.append(part)
+            ants[p]=graph
         return ants
-                
+     #Create que tipo de relación es           
     
     def choose(self, lista:list):
         """Get a random index form acumulative list.
@@ -224,13 +234,16 @@ class AntColony(object):
             int: Position choose element."""
         num=np.random.rand()
         for i in lista:
-            print('value of list = %s' % str(i))
+            #print('value of list = %s' % str(i))
             if i>num:
                 ind=lista.index(i)
                 break            
         return ind
 
-
+    def accuracity(self, ant, log):
+        for i in ant:
+            None
+        return None
 
 log=Log('log_base.csv')
 activities=log.getStartEnd()
@@ -238,9 +251,9 @@ F=log.direct()
 route=log.getRoute()
 prob=log.getInfo()
 heuristic=log.convertList(log.getInfoAcum())
-convertido=log.convertRoute(log.convertRoute(route))
-colonia=AntColony(heuristic,route, activities, activities[1])
+convertido, relation=log.convertRoute(route)
+colonia=AntColony(heuristic,convertido, relation, activities, activities[1])
 AntProb=colonia.probability()
 phero=colonia.startPheromone(0.5)
 #colonia.choose(AntProb['b'])
-colonia.createSolution(2)
+sol=colonia.createSolution(20)
