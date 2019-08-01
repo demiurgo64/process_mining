@@ -2,6 +2,7 @@ import csv
 import copy
 import itertools as it
 import numpy as np
+import datetime
 
 class ACO(object):
     def __init__(self, ant_cant:int, generation:int, alpha:float,
@@ -33,7 +34,7 @@ class Log(object):
                 caseid = row[0]
                 task = row[1]
                 user = row[2]
-                timestamp = row[3]
+                timestamp = datetime.datetime.strptime(row[3], '%d/%m/%y %H:%M')
                 if caseid not in log:
                     log[caseid] = []
                 event = (task, user, timestamp)
@@ -41,8 +42,18 @@ class Log(object):
                 if task not in activity.keys():
                     activity[task]=counter
                     counter+=1
+        for case in log.keys():
+            log[case].sort(key=lambda x:x[2])
         
         return log, activity
+    
+    def trace(self):
+        order=dict()
+        for caseid in self.log:
+             if caseid not in order:
+                    order[caseid] = [x[0] for x in self.log[caseid]]
+        return order
+                
     
     def direct(self):
         F = dict()
@@ -203,26 +214,34 @@ class AntColony(object):
     
     def createSolution(self, quantity):
         ants=[None]*quantity
+        ant2=[None]*quantity
         actSE=self.start
         route=self.route #Get path
+        relation=self.relation
         prob=self.probability() #Get prob per route
         for p in range(quantity):
             graph=dict()
+            rel=dict()
             ant=['a']#Routine for first element
             step=ant[-1]
             for j in ant:
                 step=j
                 for i in step:
                     if i not in actSE[1]:
-                        part=route[i][self.choose(prob[i])]
+                        random=self.choose(prob[i])
+                        part=route[i][random]
+                        rel_ind=relation[i][random]
                         if i not in graph.keys():
                             graph[i]=list()
+                            rel[i]=list()
                         new=[str(x) for x in part]
                         if new not in  graph[i]:
                             graph[i].append(new)
+                            rel[i].append(rel_ind)
                             ant.append(part)
             ants[p]=graph
-        return ants
+            ant2[p]=rel
+        return ants, ant2
      #Create que tipo de relación es           
     
     def choose(self, lista:list):
@@ -234,17 +253,53 @@ class AntColony(object):
             int: Position choose element."""
         num=np.random.rand()
         for i in lista:
-            #print('value of list = %s' % str(i))
             if i>num:
                 ind=lista.index(i)
                 break            
         return ind
 
-    def accuracity(self, ant, log):
-        for i in ant:
-            None
-        return None
+def accuracity(ant, rel, log):
+    count=0
+    
+    for trace in list(log.trace().values()):
+        #trace=list(log.trace().values())[1]#Check trace
+        complete=True
+        for element in trace: #check element-by-element in trace
+            if element in ant.keys(): #Check if element exist in ant
+                for i in ant[element]:
+                    ind=ant[element].index(i)
+                    if(rel[element][ind]<2):#Direct & and
+                        for j in i:
+                            print("(%s,%s - %s )" % (element, j, check(element, j, trace)))
+                            complete = complete and check(element, j, trace)
+                    else:#Or
+                        print("(%s,%s - %s )" % (element, i, check_or(element, i, trace)))
+                        complete = complete and check_or(element,i,trace)
+            else:
+                complete = complete and element in log.getStartEnd()[1]
+        print(complete)
+    
+    
+        #Check if was good fitness    
+        if complete == True:
+            count+=1
+    per=count/len(log.trace().values())
+    return per
 
+def check(first, second, lista:list):
+    result=False
+    if first in lista and second in lista:
+        result=lista.index(first)<lista.index(second)
+    return result
+
+def check_or(first,split:list, lista:list):
+    result=False
+    result=not(all(elem in split for elem in lista))
+    if result:
+        for i in split:
+            if first in lista and i in lista:
+                result=lista.index(first)<lista.index(i)
+    return result
 log=Log('log_base.csv')
 activities=log.getStartEnd()
 F=log.direct()
@@ -256,4 +311,20 @@ colonia=AntColony(heuristic,convertido, relation, activities, activities[1])
 AntProb=colonia.probability()
 phero=colonia.startPheromone(0.5)
 #colonia.choose(AntProb['b'])
-sol=colonia.createSolution(20)
+sol, rel=colonia.createSolution(20)
+
+best=[{
+      'a':[['b']],
+      'b':[['c','d']],
+      'd':[['g','e']],
+      'e':[['f']],
+      'f':[['h','g']],
+      'g':[['h','e']]
+      },{    
+      'a':[0],
+      'b':[2],
+      'd':[2],
+      'e':[0],
+      'f':[2],
+      'g':[2]
+      }]
