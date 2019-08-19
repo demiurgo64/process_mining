@@ -34,8 +34,7 @@ class Log(object):
                 caseid = row[0]
                 task = row[1]
                 user = row[2]
-                #timestamp = datetime.datetime.strptime(row[3], '%Y/%m/%d %H:%M:%S.%f')
-                timestamp = datetime.datetime.strptime(row[3], '%d/%m/%y %H:%M')
+                timestamp = datetime.datetime.strptime(row[3], '%Y/%m/%d %H:%M:%S.%f')
                 if caseid not in log:
                     log[caseid] = []
                 event = (task, user, timestamp)
@@ -87,6 +86,7 @@ class Log(object):
                     dist[ai]=dict()
                 dist[ai][aj]=F[ai][aj]/total
         return dist
+    
     def getRoute(self):
         F=self.direct()
         route=dict()
@@ -98,6 +98,26 @@ class Log(object):
                 route[ai].extend(list(it.combinations(list(F[ai].keys()),i)))
         return route
     
+    def getInfo1(self):
+        route=self.getRoute()
+        F=self.direct()
+        prob=dict()
+        for fromAct in route.keys():
+            prob[fromAct]={item:F[fromAct][item[0]] for item in route[fromAct] if len(item)==1} #Revisar los valores creo que se esta tomando mal la F, puesto que se ve todo el diccionario.
+            prob[fromAct].update({('and',item):sum([F[fromAct][x] for x in item]) for item in route[fromAct] if len(item)>1})
+            prob[fromAct].update({('or',item):sum([F[fromAct][x] for x in item]) for item in route[fromAct] if len(item)>1})
+        return prob
+    
+    def splitTask(self, fromAct, toAct:tuple, F:dict):
+        num=0
+        for i in range(len(toAct)):
+            for j in range(len(toAct)):
+                if (toAct[j] in F[toAct[i]].keys()) & (j!=i): #Check if relation exist else 0
+                    num+=F[toAct[i]][toAct[j]] #Add the direct value 
+        dem=sum([F[fromAct][item] for item in toAct])+1
+        relation=num/dem
+        return relation #Prob 'and' event 1-relation prob 'or' event
+
     def getInfo(self):
         route=copy.deepcopy(self.getRoute())
         F=copy.deepcopy(self.direct())
@@ -121,17 +141,6 @@ class Log(object):
                     prob[ai][i]=[x * value for x in self.splitTask(F, lista, ai)]
         return prob
     
-    def splitTask(self, F:dict, act:list, a:str):
-        prob=[0]*2
-        if(act[0] in F.keys() and act[1] in F.keys() and act[0] in F[act[1]].keys() and act[1] in F[act[0]].keys()):
-            num=F[act[0]][act[1]]+F[act[1]][act[0]]
-        else:
-            num=0
-        den=F[a][act[0]]+F[a][act[1]]+1
-        prob[0]=num/den #And probabilitiy
-        prob[1]=1-prob[0] #or probability
-        return prob
-    
     def getInfoAcum(self):
         prob=self.getInfo()
         for ai in prob.keys():
@@ -152,7 +161,6 @@ class Log(object):
         for ai in dic.keys():
             i=0
             while(i<len(dic[ai])):
-            #for i in range(len(dic[ai])):
                 if(isinstance(dic[ai][i],list)):
                     for j in range(len(dic[ai][i])):
                         dic[ai].insert(i+j+1, dic[ai][i][j])
@@ -325,44 +333,27 @@ def check_or(index,split:list, lista:list):
         elif index+2<=len(lista):
             result=lista[index+1] in split
     return result
-log=Log('log_base.csv')
-#log=Log('hospital.csv')
+log=Log('hospital.csv')
 activities=log.getStartEnd()
 F=log.direct()
 route=log.getRoute()
-prob=log.getInfo()
-heuristic=log.convertList(log.getInfoAcum())
-convertido, relation=log.convertRoute(route)
-colonia=AntColony(heuristic,convertido, relation, activities, activities[1])
-AntProb=colonia.probability()
-phero=colonia.startPheromone(0.5)
+#prob=log.getInfo()
+#heuristic=log.convertList(log.getInfoAcum())
+#convertido, relation=log.convertRoute(route)
+#colonia=AntColony(heuristic,convertido, relation, activities, activities[1])
+#AntProb=colonia.probability()
+#phero=colonia.startPheromone(0.5)
 #colonia.choose(AntProb['b'])
-sol, rel=colonia.createSolution(100)
-accu=list()
-for itera in range(100):
-    accu=list()
-    sol, rel=colonia.createSolution(100)
-    for i in range(len(sol)):
-        accu.append(accuracity(sol[i],rel[i],log))
-    colonia.updatePheromone([sol, rel], accu, route)
-print(colonia.phero)
-trazas=list(log.trace().values())
+#sol, rel=colonia.createSolution(100)
+#accu=list()
+#for itera in range(100):
+#    accu=list()
+#    sol, rel=colonia.createSolution(100)
+#    for i in range(len(sol)):
+#        accu.append(accuracity(sol[i],rel[i],log))
+#    colonia.updatePheromone([sol, rel], accu, route)
+#print(colonia.phero)
+#trazas=list(log.trace().values())
 
-best=[{
-      'a':[['b']],
-      'b':[['c','d']],
-      'd':[['g','e']],
-      'e':[['f']],
-      'f':[['h','g']],
-      'g':[['h','e']]
-      },{    
-      'a':[0],
-      'b':[2],
-      'd':[2],
-      'e':[0],
-      'f':[2],
-      'g':[2]
-      }];
-print(accuracity(best[0],best[1],log))
 #for i in range(len(sol)):
 #    print(accuracity(sol[i],rel[i],log))
