@@ -34,6 +34,7 @@ class Log(object):
                 caseid = row[0]
                 task = row[1]
                 user = row[2]
+                #timestamp = datetime.datetime.strptime(row[3], '%Y/%m/%d %H:%M:%S.%f')
                 timestamp = datetime.datetime.strptime(row[3], '%d/%m/%y %H:%M')
                 if caseid not in log:
                     log[caseid] = []
@@ -198,6 +199,31 @@ class AntColony(object):
                     pheromone[ai][i]=value
         return pheromone
     
+    def updatePheromone(self, ants, accu:list, route:dict, rho=0.01, tau=0.01):
+        phero=self.phero
+        for i in phero.keys(): #evaporation
+            phero[i]=[x-rho for x in phero[i]]
+        sol=ants[0]#Route
+        rel=ants[1]#kind of route
+        g_perc=[x*tau for x in accu]
+        for i in range(len(sol)):#new pheromone
+            for key in sol[i].keys():
+                value=sol[i][key]
+                j=0
+                for item in value:
+                    if(len(item)>1):
+                        type_split=rel[i][key][j]
+                        j+=1
+                        if type_split==1: #And
+                            phero[key][2]+=g_perc[i]
+                        else: #or
+                            phero[key][3]+=g_perc[i]
+                    else:
+                        pos=[list(x) for x in route[key]].index(item)
+                        phero[key][pos]+=g_perc[i]
+        self.phero=phero
+        
+    
     def probability(self):
         matriz=copy.deepcopy(self.heuristic)
         suma=copy.deepcopy(self.heuristic)
@@ -262,22 +288,21 @@ def accuracity(ant, rel, log):
     count=0
     
     for trace in list(log.trace().values()):
-        #trace=list(log.trace().values())[1]#Check trace
         complete=True
-        for element in trace: #check element-by-element in trace
+        for index, element in enumerate(trace): #check element-by-element in trace
             if element in ant.keys(): #Check if element exist in ant
                 for i in ant[element]:
                     ind=ant[element].index(i)
                     if(rel[element][ind]<2):#Direct & and
                         for j in i:
-                            print("(%s,%s - %s )" % (element, j, check(element, j, trace)))
+                            #print("(%s,%s - %s )" % (element, j, check(element, j, trace)))
                             complete = complete and check(element, j, trace)
                     else:#Or
-                        print("(%s,%s - %s )" % (element, i, check_or(element, i, trace)))
-                        complete = complete and check_or(element,i,trace)
+                        #print("(%s,%s - %s )" % (element, i, check_or(index, i, trace)))
+                        complete = complete and check_or(index,i,trace)
             else:
                 complete = complete and element in log.getStartEnd()[1]
-        print(complete)
+        #print(complete)
     
     
         #Check if was good fitness    
@@ -292,15 +317,16 @@ def check(first, second, lista:list):
         result=lista.index(first)<lista.index(second)
     return result
 
-def check_or(first,split:list, lista:list):
+def check_or(index,split:list, lista:list):
     result=False
-    result=not(all(elem in split for elem in lista))
-    if result:
-        for i in split:
-            if first in lista and i in lista:
-                result=lista.index(first)<lista.index(i)
+    for item in split:
+        if index+3 <= len(lista):
+            result=(lista[index+1] in split)|(lista[index+2] in split) #is posible Xor o or activities
+        elif index+2<=len(lista):
+            result=lista[index+1] in split
     return result
 log=Log('log_base.csv')
+#log=Log('hospital.csv')
 activities=log.getStartEnd()
 F=log.direct()
 route=log.getRoute()
@@ -311,7 +337,16 @@ colonia=AntColony(heuristic,convertido, relation, activities, activities[1])
 AntProb=colonia.probability()
 phero=colonia.startPheromone(0.5)
 #colonia.choose(AntProb['b'])
-sol, rel=colonia.createSolution(20)
+sol, rel=colonia.createSolution(100)
+accu=list()
+for itera in range(100):
+    accu=list()
+    sol, rel=colonia.createSolution(100)
+    for i in range(len(sol)):
+        accu.append(accuracity(sol[i],rel[i],log))
+    colonia.updatePheromone([sol, rel], accu, route)
+print(colonia.phero)
+trazas=list(log.trace().values())
 
 best=[{
       'a':[['b']],
@@ -327,4 +362,7 @@ best=[{
       'e':[0],
       'f':[2],
       'g':[2]
-      }]
+      }];
+print(accuracity(best[0],best[1],log))
+#for i in range(len(sol)):
+#    print(accuracity(sol[i],rel[i],log))
