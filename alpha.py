@@ -171,4 +171,5 @@ def test(file):
     CH=choice(F,activity)
     st, et=start_end(log)
     X=get_X(activity,C,CH)
+    Y=get_Y(X)
     plot_petri(st,et,Y,file)
