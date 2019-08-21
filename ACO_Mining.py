@@ -98,93 +98,39 @@ class Log(object):
                 route[ai].extend(list(it.combinations(list(F[ai].keys()),i)))
         return route
     
-    def getInfo1(self):
+    def getInfo(self, acumulate=True):
         route=self.getRoute()
         F=self.direct()
         prob=dict()
+        count=dict()
         for fromAct in route.keys():
-            prob[fromAct]={item:F[fromAct][item[0]] for item in route[fromAct] if len(item)==1} #Revisar los valores creo que se esta tomando mal la F, puesto que se ve todo el diccionario.
-            prob[fromAct].update({('and',item):sum([F[fromAct][x] for x in item]) for item in route[fromAct] if len(item)>1})
-            prob[fromAct].update({('or',item):sum([F[fromAct][x] for x in item]) for item in route[fromAct] if len(item)>1})
+#            prob[fromAct]={toAct:sum([F[fromAct][item] for item in toAct]) for toAct in route[fromAct]}
+            count[fromAct]={toAct:F[fromAct][toAct[0]] for toAct in route[fromAct] if len(toAct)==1}
+            count[fromAct].update({('and',toAct):sum([F[fromAct][item] for item in toAct])*log.splitTask1(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct].update({('or',toAct):sum([F[fromAct][item] for item in toAct])*(1-log.splitTask1(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
+        for fromAct in count.keys():
+            total=sum(count[fromAct].values())
+            prob[fromAct]={toAct:count[fromAct][toAct]/total for toAct in count[fromAct].keys()}
+        
+        if acumulate:
+            for fromAct in prob.keys():
+                acum=0
+                for key, value in prob[fromAct].items():
+                    acum+=value
+                    prob[fromAct][key]=acum
         return prob
     
     def splitTask(self, fromAct, toAct:tuple, F:dict):
-        num=0
-        for i in range(len(toAct)):
-            for j in range(len(toAct)):
-                if (toAct[j] in F[toAct[i]].keys()) & (j!=i): #Check if relation exist else 0
-                    num+=F[toAct[i]][toAct[j]] #Add the direct value 
-        dem=sum([F[fromAct][item] for item in toAct])+1
-        relation=num/dem
-        return relation #Prob 'and' event 1-relation prob 'or' event
-
-    def getInfo(self):
-        route=copy.deepcopy(self.getRoute())
-        F=copy.deepcopy(self.direct())
-        prob=dict()
-        for ai in route.keys():
-            if ai not in prob.keys():
-                prob[ai]=[0]*len(route[ai])
-            for i in range(len(route[ai])):
-                acts=route[ai][i]
-                for j in range(len(acts)):
-                    fkey=acts[j]
-                    prob[ai][i]+=F[ai][fkey]
-        for ai in prob.keys():
-            total=sum(prob[ai])
-            for i in range(len(prob[ai])):
-                if (len(route[ai][i])==1):
-                    prob[ai][i]=prob[ai][i]/total
-                else:
-                    lista=route[ai][i]
-                    value=prob[ai][i]/total
-                    prob[ai][i]=[x * value for x in self.splitTask(F, lista, ai)]
-        return prob
-    
-    def getInfoAcum(self):
-        prob=self.getInfo()
-        for ai in prob.keys():
-            acum=0
-            for i in range(len(prob[ai])):
-                if (isinstance(prob[ai][i], list)):
-                    split=list()
-                    for j in prob[ai][i]:
-                        acum+=j
-                        split.append(acum)
-                    prob[ai][i]=split
-                else:
-                    acum+=prob[ai][i]
-                    prob[ai][i]=acum
-        return prob
-    
-    def convertList(self, dic:dict):
-        for ai in dic.keys():
-            i=0
-            while(i<len(dic[ai])):
-                if(isinstance(dic[ai][i],list)):
-                    for j in range(len(dic[ai][i])):
-                        dic[ai].insert(i+j+1, dic[ai][i][j])
-                    del dic[ai][i]
-                i+=1
-        return dic
-    
-    def convertRoute(self, dic:dict):#revisar
-        dic=copy.deepcopy(dic)
-        relation=copy.deepcopy(dic)
-        for key, value in dic.items():
-            if(len(value)>1):
-                count=0
-                for i in value:
-                    if (len(i)==1):
-                        count+=1
-                par=len(dic[key][count:])
-                dic[key].extend(dic[key][count:])
-                relation[key]=[0]*count
-                relation[key].extend([1]*par)
-                relation[key].extend([2]*par)
-            else:
-                relation[key]=[0]
-        return dic, relation
+        tasks=list()
+        for act in toAct:
+            tasks.append(F[fromAct][act])
+        coeff=np.std(tasks)/np.mean(tasks)
+        if coeff>0.8:
+            relation=0.2
+        else:
+            relation=min(1-coeff,0.8)
+        return relation
+   
 class AntColony(object):
     def __init__(self, dist:dict, route:dict, relation:dict, startAct:list, endAct:list):
         self.heuristic = dict(dist.copy())
@@ -337,7 +283,7 @@ log=Log('hospital.csv')
 activities=log.getStartEnd()
 F=log.direct()
 route=log.getRoute()
-#prob=log.getInfo()
+prob=log.getInfo1()
 #heuristic=log.convertList(log.getInfoAcum())
 #convertido, relation=log.convertRoute(route)
 #colonia=AntColony(heuristic,convertido, relation, activities, activities[1])
