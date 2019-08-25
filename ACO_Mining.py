@@ -22,6 +22,7 @@ class Log(object):
     def __init__(self, path:str):
         self.path=path
         self.log, self.activity  = self.log_import()
+        self.start, self.end = self.StartEnd()
         
     def log_import(self):
     
@@ -54,7 +55,21 @@ class Log(object):
                     order[caseid] = [x[0] for x in self.log[caseid]]
         return order
                 
-    
+    def StartEnd(self):
+        initial=[x[0] for x in self.trace().values()]
+        start=dict()
+        for i in initial:
+            if i not in start:
+                start[i]=0
+            start[i]+=1
+        
+        final=[x[-1] for x in self.trace().values()]
+        end=dict()
+        for i in final:
+            if i not in end:
+                end[i]=0
+            end[i]+=1
+        return start, end
     def direct(self):
         F = dict()
         for caseid in self.log:
@@ -98,16 +113,15 @@ class Log(object):
                 route[ai].extend(list(it.combinations(list(F[ai].keys()),i)))
         return route
     
-    def getInfo(self, acumulate=True):
+    def getInfo(self, acumulate=False):
         route=self.getRoute()
         F=self.direct()
         prob=dict()
         count=dict()
         for fromAct in route.keys():
-#            prob[fromAct]={toAct:sum([F[fromAct][item] for item in toAct]) for toAct in route[fromAct]}
-            count[fromAct]={toAct:F[fromAct][toAct[0]] for toAct in route[fromAct] if len(toAct)==1}
-            count[fromAct].update({('and',toAct):sum([F[fromAct][item] for item in toAct])*log.splitTask1(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
-            count[fromAct].update({('or',toAct):sum([F[fromAct][item] for item in toAct])*(1-log.splitTask1(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct]={('dir',toAct):F[fromAct][toAct[0]] for toAct in route[fromAct] if len(toAct)==1}
+            count[fromAct].update({('and',toAct):sum([F[fromAct][item] for item in toAct])*log.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct].update({('or',toAct):sum([F[fromAct][item] for item in toAct])*(1-log.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
         for fromAct in count.keys():
             total=sum(count[fromAct].values())
             prob[fromAct]={toAct:count[fromAct][toAct]/total for toAct in count[fromAct].keys()}
@@ -132,25 +146,17 @@ class Log(object):
         return relation
    
 class AntColony(object):
-    def __init__(self, dist:dict, route:dict, relation:dict, startAct:list, endAct:list):
-        self.heuristic = dict(dist.copy())
+    def __init__(self, dist:dict, route:dict, startAct:dict, endAct:dict):
+        self.heuristic = copy.deepcopy(dist)
         self.route = copy.deepcopy(route)
-        self.relation = copy.deepcopy(relation)
         self.phero = self.startPheromone()
-        self.start = startAct
-        self.end = endAct
+        self.start = copy.deepcopy(startAct)
+        self.end = copy.deepcopy(endAct)
         
     def startPheromone(self, value=0.5):
         pheromone=copy.deepcopy(self.heuristic)
-        for ai in pheromone.keys():
-            for i in range(len(pheromone[ai])):
-                if (isinstance(pheromone[ai][i], list)):
-                    split=list()
-                    for j in pheromone[ai][i]:
-                        split.append(value)
-                    pheromone[ai][i]=split
-                else:
-                    pheromone[ai][i]=value
+        for fromAct in pheromone.keys():
+            pheromone[fromAct]={key:value for key, old in pheromone[fromAct].items()}
         return pheromone
     
     def updatePheromone(self, ants, accu:list, route:dict, rho=0.01, tau=0.01):
@@ -177,20 +183,75 @@ class AntColony(object):
                         phero[key][pos]+=g_perc[i]
         self.phero=phero
         
-    
     def probability(self):
         matriz=copy.deepcopy(self.heuristic)
-        suma=copy.deepcopy(self.heuristic)
-        for ai in self.heuristic.keys():
-            suma[ai]=0
-            for i in range(len(self.heuristic[ai])):
-                suma[ai]+=self.heuristic[ai][i]*self.phero[ai][i]
-        for ai in self.heuristic.keys():
-            prev=0
-            for i in range(len(self.heuristic[ai])):
-                matriz[ai][i]=self.heuristic[ai][i]*self.phero[ai][i]/suma[ai]+prev
-                prev=matriz[ai][i]
+        phero=self.phero
+        heuristic=self.heuristic
+        for fromAct in matriz.keys():
+            for toAct in matriz[fromAct].keys():
+                matriz[fromAct][toAct]=phero[fromAct][toAct] * heuristic[fromAct][toAct]
+            total=sum(matriz[fromAct].values())
+            matriz[fromAct]={key:value/total for key, value in matriz[fromAct].items()}
+        for fromAct in matriz.keys(): #Acumulate probability
+            acum=0
+            for key, value in matriz[fromAct].items():
+                acum+=value
+                matriz[fromAct][key]=acum
         return matriz
+    
+    def createSolutions(self, quantity=1):
+        ants=[None]*quantity
+        actInit=list(self.start.keys())
+        actEnd=list(self.end.keys())
+        prob=self.probability()
+        
+        for ant in range(quantity):
+            graph=dict()
+            if len(actInit)>1:
+                ind=np.random.randint(len(actInit))
+            else:
+                ind=0
+            step=actInit[ind] #Choose start task
+            graph['/start/']=('dir',(step,)) #temporaly this support and/or split initial
+            random=np.random.random()
+            for key, value in prob[step].items():
+                if random<=value:
+                    graph[step]=key
+                    step=key
+                    break
+
+            #rest of activities
+            for act in step[1]:
+                if act in prob.keys():
+                    tupla=self.chooseAct(act, prob[act], graph)
+                    if act not in graph.keys():
+                        graph[act]=tupla
+#                    for key, value in prob[act].items():
+#                        random=np.random.random()
+#                        if random<=value:
+#                            if act not in graph.keys():
+#                                graph[act]=key
+            
+            #Check not end task
+            for tasks in graph.values():
+                for act in tasks[1]:
+                    if act not in graph.keys():
+                        if act not in actEnd:
+                            None
+            #check if reach end's task
+            if act in graph.keys():
+                None
+                            
+            
+            ants[ant]=graph
+        return ants
+    
+    def chooseAct(self, act:str, subprob:dict, graph:dict):
+        random=np.random.random()
+        for key, value in subprob.items():
+            if random<=value:
+                tupla=key
+        return tupla
     
     def createSolution(self, quantity):
         ants=[None]*quantity
@@ -283,18 +344,12 @@ log=Log('hospital.csv')
 activities=log.getStartEnd()
 F=log.direct()
 route=log.getRoute()
-prob=log.getInfo1()
-#heuristic=log.convertList(log.getInfoAcum())
-#convertido, relation=log.convertRoute(route)
-#colonia=AntColony(heuristic,convertido, relation, activities, activities[1])
-#AntProb=colonia.probability()
-#phero=colonia.startPheromone(0.5)
-#colonia.choose(AntProb['b'])
-#sol, rel=colonia.createSolution(100)
-#accu=list()
-#for itera in range(100):
-#    accu=list()
-#    sol, rel=colonia.createSolution(100)
+prob=log.getInfo()
+final={key: value for key, value in log.end.items() if value/sum(log.end.values())>0.01}
+colonia=AntColony(prob, route, log.start, final)
+phero=colonia.phero
+matriz=colonia.probability()
+ants=colonia.createSolutions(10)
 #    for i in range(len(sol)):
 #        accu.append(accuracity(sol[i],rel[i],log))
 #    colonia.updatePheromone([sol, rel], accu, route)
