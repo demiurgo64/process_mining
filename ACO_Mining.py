@@ -13,10 +13,6 @@ class ACO(object):
         self.alpha=alpha
         self.ant_cant= ant_cant
         self.generation = generation
-        
-    #def _update_feromone(self):
-        
-    #def solve(self):
 
 class Log(object):
     def __init__(self, path:str):
@@ -212,7 +208,7 @@ class AntColony(object):
             else:
                 ind=0
             step=actInit[ind] #Choose start task
-            graph['/start/']=('dir',(step,)) #temporaly this support and/or split initial
+            #graph['/start/']=('dir',(step,)) #temporaly this support and/or split initial
             random=np.random.random()
             for key, value in prob[step].items():
                 if random<=value:
@@ -223,123 +219,79 @@ class AntColony(object):
             #rest of activities
             for act in step[1]:
                 if act in prob.keys():
-                    tupla=self.chooseAct(act, prob[act], graph)
+                    tupla=self.chooseAct(act, prob[act])
                     if act not in graph.keys():
                         graph[act]=tupla
-#                    for key, value in prob[act].items():
-#                        random=np.random.random()
-#                        if random<=value:
-#                            if act not in graph.keys():
-#                                graph[act]=key
             
-            #Check not end task
+#            #create connection to final task
+#            temporal=dict()
+#            for tasks in graph.values():
+#                for act in tasks[1]:
+#                    if act in actEnd:
+#                        if act not in graph.values():
+#                            temporal[act]=('dir',('/end/',))
+#            #Add temporal to graph
+#            for key, value in temporal.items():
+#                graph[key]=value
+            
+            #Check not-end task
+            temporal=dict() #to save pairs key, value
             for tasks in graph.values():
                 for act in tasks[1]:
                     if act not in graph.keys():
                         if act not in actEnd:
-                            None
-            #check if reach end's task
-            if act in graph.keys():
-                None
+                            if act !='/end/':
+                                temporal[act]=self.chooseAct(act, prob[act])
+            #Add temporal to graph
+            for key, value in temporal.items():
+                graph[key]=value
                             
             
             ants[ant]=graph
         return ants
     
-    def chooseAct(self, act:str, subprob:dict, graph:dict):
+    def chooseAct(self, act:str, subprob:dict):
         random=np.random.random()
         for key, value in subprob.items():
             if random<=value:
                 tupla=key
         return tupla
-    
-    def createSolution(self, quantity):
-        ants=[None]*quantity
-        ant2=[None]*quantity
-        actSE=self.start
-        route=self.route #Get path
-        relation=self.relation
-        prob=self.probability() #Get prob per route
-        for p in range(quantity):
-            graph=dict()
-            rel=dict()
-            ant=['a']#Routine for first element
-            step=ant[-1]
-            for j in ant:
-                step=j
-                for i in step:
-                    if i not in actSE[1]:
-                        random=self.choose(prob[i])
-                        part=route[i][random]
-                        rel_ind=relation[i][random]
-                        if i not in graph.keys():
-                            graph[i]=list()
-                            rel[i]=list()
-                        new=[str(x) for x in part]
-                        if new not in  graph[i]:
-                            graph[i].append(new)
-                            rel[i].append(rel_ind)
-                            ant.append(part)
-            ants[p]=graph
-            ant2[p]=rel
-        return ants, ant2
-     #Create que tipo de relación es           
-    
-    def choose(self, lista:list):
-        """Get a random index form acumulative list.
-        
-        Args:
-            param1 (list): list of probabilities
-        Returns:
-            int: Position choose element."""
-        num=np.random.rand()
-        for i in lista:
-            if i>num:
-                ind=lista.index(i)
-                break            
-        return ind
 
-def accuracity(ant, rel, log):
-    count=0
-    
-    for trace in list(log.trace().values()):
+def accuracity(ant:dict, traces:list, endTask):
+    result=list()
+    for trace in traces:
         complete=True
-        for index, element in enumerate(trace): #check element-by-element in trace
-            if element in ant.keys(): #Check if element exist in ant
-                for i in ant[element]:
-                    ind=ant[element].index(i)
-                    if(rel[element][ind]<2):#Direct & and
-                        for j in i:
-                            #print("(%s,%s - %s )" % (element, j, check(element, j, trace)))
-                            complete = complete and check(element, j, trace)
-                    else:#Or
-                        #print("(%s,%s - %s )" % (element, i, check_or(index, i, trace)))
-                        complete = complete and check_or(index,i,trace)
+        for index, element in enumerate(trace):
+            if index+1 < len(trace):
+                if element in ant.keys():
+                    kind, tasks =ant[element] #Split kind of relation and activity
+                    complete=complete and check(kind, tasks, index, trace)
             else:
-                complete = complete and element in log.getStartEnd()[1]
-        #print(complete)
-    
-    
-        #Check if was good fitness    
-        if complete == True:
-            count+=1
-    per=count/len(log.trace().values())
-    return per
-
-def check(first, second, lista:list):
-    result=False
-    if first in lista and second in lista:
-        result=lista.index(first)<lista.index(second)
+                if trace[-1] not in endTask.keys():
+                    complete=False
+        result.append(complete)
+        complete=True
     return result
 
-def check_or(index,split:list, lista:list):
+def check(kind, tasks, pos, trace):
     result=False
-    for item in split:
-        if index+3 <= len(lista):
-            result=(lista[index+1] in split)|(lista[index+2] in split) #is posible Xor o or activities
-        elif index+2<=len(lista):
-            result=lista[index+1] in split
+    if kind=='dir':
+        if trace[pos+1]==tasks: result=True
+    if kind=='and':
+        ind=len(tasks)
+        if pos+1+ind<len(trace):
+            subtrace=trace[pos+1:pos+ind+1]
+            mask=[act in subtrace for act in tasks]
+            if sum(mask)==len(mask): result=True
+    if kind=='or':
+        ind=len(tasks)
+        limit=min(pos+ind+1,len(trace))
+        if pos+1<len(trace):
+            subtrace=trace[pos+1:limit]
+            mask=[act in subtrace for act in tasks]
+            if (sum(mask)>0)and (sum(mask)<len(mask)): result=True
     return result
+    
 log=Log('hospital.csv')
 activities=log.getStartEnd()
 F=log.direct()
@@ -349,12 +301,16 @@ final={key: value for key, value in log.end.items() if value/sum(log.end.values(
 colonia=AntColony(prob, route, log.start, final)
 phero=colonia.phero
 matriz=colonia.probability()
-ants=colonia.createSolutions(10)
-#    for i in range(len(sol)):
-#        accu.append(accuracity(sol[i],rel[i],log))
-#    colonia.updatePheromone([sol, rel], accu, route)
-#print(colonia.phero)
-#trazas=list(log.trace().values())
-
-#for i in range(len(sol)):
-#    print(accuracity(sol[i],rel[i],log))
+ants=colonia.createSolutions(100)
+antTest={'NEW':('or',('DELETE', 'CHANGE DIAGN', 'FIN')), 
+         'FIN':('dir',('RELEASE')), 
+         'RELEASE':('or',('CODE NOK','CODE OK')),
+         'CODE NOK':('dir',('BILLED',)),
+         'CODE OK':('or',('BILLED','STORNO')),
+         'STORNO':('dir',('REJECT',)),
+         'REJECT':('dir',('REOPEN',)),
+         'REOPEN':('dir',('DELETE')),
+         'CHANGED DIAGN':('dir',('FIN',)),
+         }
+trazas=list(log.trace().values())
+sum(accuracity(antTest, [trazas[1]], final))
