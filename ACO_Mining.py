@@ -98,19 +98,19 @@ class Log(object):
                 dist[ai][aj]=F[ai][aj]/total
         return dist
     
-    def getRoute(self):
+    def getRoute(self, combinations=100):
         F=self.direct()
         route=dict()
         for ai in F.keys():
             if ai not in route:
                 route[ai]=list()
             count= len(F[ai].keys())
-            for i in range(1,count+1):
+            for i in range(1,min(combinations,count+1)):
                 route[ai].extend(list(it.combinations(list(F[ai].keys()),i)))
         return route
     
     def getInfo(self, acumulate=False):
-        route=self.getRoute()
+        route=self.getRoute(3)
         F=self.direct()
         prob=dict()
         count=dict()
@@ -154,30 +154,18 @@ class AntColony(object):
         for fromAct in pheromone.keys():
             pheromone[fromAct]={key:value for key, old in pheromone[fromAct].items()}
         return pheromone
-    
-    def updatePheromone(self, ants, accu:list, route:dict, rho=0.01, tau=0.01):
+    def updatePheromone(self, ants, accu:list, rho=0.01, tau=0.01):
         phero=self.phero
-        for i in phero.keys(): #evaporation
-            phero[i]=[x-rho for x in phero[i]]
-        sol=ants[0]#Route
-        rel=ants[1]#kind of route
-        g_perc=[x*tau for x in accu]
-        for i in range(len(sol)):#new pheromone
-            for key in sol[i].keys():
-                value=sol[i][key]
-                j=0
-                for item in value:
-                    if(len(item)>1):
-                        type_split=rel[i][key][j]
-                        j+=1
-                        if type_split==1: #And
-                            phero[key][2]+=g_perc[i]
-                        else: #or
-                            phero[key][3]+=g_perc[i]
-                    else:
-                        pos=[list(x) for x in route[key]].index(item)
-                        phero[key][pos]+=g_perc[i]
-        self.phero=phero
+        for key in phero.keys(): #reduce pheromone
+            for subkey, value in phero[key].items():
+                new_val=value-rho
+                if new_val <0.05: new_val=0.05
+                phero[key][subkey]=new_val
+        g_perc=[x*tau for x in accu]#pheromone to add per ant
+        for index, ant in enumerate(ants):
+            for key, value in ant.items():
+                phero[key][value]=phero[key][value]+g_perc[index]
+        self.phero = phero
         
     def probability(self):
         matriz=copy.deepcopy(self.heuristic)
@@ -271,7 +259,7 @@ def accuracity(ant:dict, traces:list, endTask):
                     complete=False
         result.append(complete)
         complete=True
-    return result
+    return sum(result)/len(result)
 
 def check(kind, tasks, pos, trace):
     result=False
@@ -301,7 +289,7 @@ final={key: value for key, value in log.end.items() if value/sum(log.end.values(
 colonia=AntColony(prob, route, log.start, final)
 phero=colonia.phero
 matriz=colonia.probability()
-ants=colonia.createSolutions(100)
+#ants=colonia.createSolutions(100)
 antTest={'NEW':('or',('DELETE', 'CHANGE DIAGN', 'FIN')), 
          'FIN':('dir',('RELEASE')), 
          'RELEASE':('or',('CODE NOK','CODE OK')),
@@ -313,4 +301,4 @@ antTest={'NEW':('or',('DELETE', 'CHANGE DIAGN', 'FIN')),
          'CHANGED DIAGN':('dir',('FIN',)),
          }
 trazas=list(log.trace().values())
-sum(accuracity(antTest, [trazas[1]], final))
+print(accuracity(antTest, trazas, final))
