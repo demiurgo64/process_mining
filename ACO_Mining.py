@@ -79,6 +79,15 @@ class Log(object):
                 F[ai][aj] += 1
         return F
     
+    def direct1(self, prob=0.002):
+        size=len(self.log)
+        F = self.direct()
+        F1={key:{subkey:value for subkey, value in F[key].items() if F[key][subkey]/size>prob} for key in F.keys()}
+        toDel=[key for key in F1.keys() if len(F1[key])<1]
+        for key in toDel:
+            del F1[key]
+        return F1
+    
     def getStartEnd(self):
         stAct = [k for k,v in self.activity.items() if v==0]
         F=self.direct()
@@ -99,7 +108,7 @@ class Log(object):
         return dist
     
     def getRoute(self, combinations=100):
-        F=self.direct()
+        F=self.direct1()
         route=dict()
         for ai in F.keys():
             if ai not in route:
@@ -109,18 +118,18 @@ class Log(object):
                 route[ai].extend(list(it.combinations(list(F[ai].keys()),i)))
         return route
     
-    def getInfo(self, acumulate=False):
-        route=self.getRoute(3)
-        F=self.direct()
+    def getInfo(self, acumulate=False, combinations=100):
+        route=self.getRoute(combinations)
+        F=self.direct1()
         prob=dict()
         count=dict()
         for fromAct in route.keys():
             count[fromAct]={('dir',toAct):F[fromAct][toAct[0]] for toAct in route[fromAct] if len(toAct)==1}
-            count[fromAct].update({('and',toAct):sum([F[fromAct][item] for item in toAct])*log.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
-            count[fromAct].update({('or',toAct):sum([F[fromAct][item] for item in toAct])*(1-log.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct].update({('and',toAct):sum([F[fromAct][item] for item in toAct])*log.splitTask(fromAct, toAct, F)/len(toAct) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct].update({('or',toAct):sum([F[fromAct][item] for item in toAct])*(1-log.splitTask(fromAct, toAct, F))/len(toAct) for toAct in route[fromAct] if len(toAct)>1})
         for fromAct in count.keys():
             total=sum(count[fromAct].values())
-            prob[fromAct]={toAct:count[fromAct][toAct]/total for toAct in count[fromAct].keys()}
+            prob[fromAct]={toAct:count[fromAct][toAct]/total for toAct in count[fromAct].keys() if count[fromAct][toAct]>0}
         
         if acumulate:
             for fromAct in prob.keys():
@@ -135,10 +144,10 @@ class Log(object):
         for act in toAct:
             tasks.append(F[fromAct][act])
         coeff=np.std(tasks)/np.mean(tasks)
-        if coeff>0.8:
-            relation=0.2
+        if coeff>1:
+            relation=0
         else:
-            relation=min(1-coeff,0.8)
+            relation=1-coeff
         return relation
    
 class AntColony(object):
@@ -210,18 +219,7 @@ class AntColony(object):
                     tupla=self.chooseAct(act, prob[act])
                     if act not in graph.keys():
                         graph[act]=tupla
-            
-#            #create connection to final task
-#            temporal=dict()
-#            for tasks in graph.values():
-#                for act in tasks[1]:
-#                    if act in actEnd:
-#                        if act not in graph.values():
-#                            temporal[act]=('dir',('/end/',))
-#            #Add temporal to graph
-#            for key, value in temporal.items():
-#                graph[key]=value
-            
+                        
             #Check not-end task
             temporal=dict() #to save pairs key, value
             for tasks in graph.values():
@@ -239,10 +237,15 @@ class AntColony(object):
         return ants
     
     def chooseAct(self, act:str, subprob:dict):
-        random=np.random.random()
-        for key, value in subprob.items():
-            if random<=value:
-                tupla=key
+        random=np.random.random(size=2)
+        if random[0]>0.3:
+            for key, value in subprob.items():
+                if random[1]<=value:
+                    tupla=key
+        else:
+            lista=list(subprob.keys())
+            ind=np.random.randint(len(lista))
+            tupla=lista[ind]
         return tupla
 
 def accuracity(ant:dict, traces:list, endTask):
@@ -254,6 +257,9 @@ def accuracity(ant:dict, traces:list, endTask):
                 if element in ant.keys():
                     kind, tasks =ant[element] #Split kind of relation and activity
                     complete=complete and check(kind, tasks, index, trace)
+                else:
+                    if element not in endTask.keys():
+                        complete=False
             else:
                 if trace[-1] not in endTask.keys():
                     complete=False
@@ -282,9 +288,9 @@ def check(kind, tasks, pos, trace):
     
 log=Log('hospital.csv')
 activities=log.getStartEnd()
-F=log.direct()
-route=log.getRoute()
-prob=log.getInfo()
+F=log.direct1()
+route=log.getRoute(combinations=4)
+prob=log.getInfo(combinations=4)
 final={key: value for key, value in log.end.items() if value/sum(log.end.values())>0.01}
 colonia=AntColony(prob, route, log.start, final)
 phero=colonia.phero
