@@ -79,7 +79,7 @@ class Log(object):
                 F[ai][aj] += 1
         return F
     
-    def direct1(self, prob=0.002):
+    def direct1(self, prob=0.001):
         size=len(self.log)
         F = self.direct()
         F1={key:{subkey:value for subkey, value in F[key].items() if F[key][subkey]/size>prob} for key in F.keys()}
@@ -192,10 +192,10 @@ class AntColony(object):
                 matriz[fromAct][key]=acum
         return matriz
     
-    def createSolutions(self, quantity=1):
+    def createSolutions(self, start:list, final:list, quantity=1):
         ants=[None]*quantity
-        actInit=list(self.start.keys())
-        actEnd=list(self.end.keys())
+        actInit=start #list(self.start.keys())
+        actEnd= final #list(self.end.keys())
         prob=self.probability()
         
         for ant in range(quantity):
@@ -212,25 +212,30 @@ class AntColony(object):
                     graph[step]=key
                     step=key
                     break
-
+            
             #rest of activities
             for act in step[1]:
                 if act in prob.keys():
                     tupla=self.chooseAct(act, prob[act])
                     if act not in graph.keys():
                         graph[act]=tupla
-                        
-            #Check not-end task
-            temporal=dict() #to save pairs key, value
-            for tasks in graph.values():
-                for act in tasks[1]:
-                    if act not in graph.keys():
-                        if act not in actEnd:
-                            if act !='/end/':
+            
+            allconected=False
+            while(not allconected):#            
+                #Check not-end task
+                temporal=dict() #to save pairs key, value
+                count=0
+                for tasks in graph.values():
+                    for act in tasks[1]:
+                        if act not in graph.keys():
+                            if act not in actEnd:
                                 temporal[act]=self.chooseAct(act, prob[act])
-            #Add temporal to graph
-            for key, value in temporal.items():
-                graph[key]=value
+                                count+=1
+                #Add temporal to graph
+                for key, value in temporal.items():
+                    graph[key]=value
+                if count==0:
+                    allconected=True
                             
             
             ants[ant]=graph
@@ -257,6 +262,7 @@ def accuracity(ant:dict, traces:list, endTask):
                 if element in ant.keys():
                     kind, tasks =ant[element] #Split kind of relation and activity
                     complete=complete and check(kind, tasks, index, trace)
+                    if not complete: break
                 else:
                     if element not in endTask.keys():
                         complete=False
@@ -291,7 +297,7 @@ activities=log.getStartEnd()
 F=log.direct1()
 route=log.getRoute(combinations=4)
 prob=log.getInfo(combinations=4)
-final={key: value for key, value in log.end.items() if value/sum(log.end.values())>0.01}
+final={key: value for key, value in log.end.items() if value/sum(log.end.values())>0.005}
 colonia=AntColony(prob, route, log.start, final)
 phero=colonia.phero
 matriz=colonia.probability()
