@@ -31,7 +31,7 @@ class Log(object):
                 caseid = row[0]
                 task = row[1]
                 user = row[2]
-                timestamp = datetime.datetime.strptime(row[3], '%Y/%m/%d %H:%M:%S.%f')
+                timestamp = datetime.datetime.strptime(row[3], '%d/%m/%y %H:%M')#'%Y/%m/%d %H:%M:%S.%f'
                 if caseid not in log:
                     log[caseid] = []
                 event = (task, user, timestamp)
@@ -135,10 +135,12 @@ class Log(object):
         count=dict()
         for fromAct in route.keys():
             count[fromAct]={('dir',toAct):F[fromAct][toAct[0]] for toAct in route[fromAct] if len(toAct)==1}
-            count[fromAct].update({('and',toAct):sum([F[fromAct][item]/len(toAct) for item in toAct])*log.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
-            count[fromAct].update({('or',toAct):sum([F[fromAct][item]/len(toAct) for item in toAct])*(1-log.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
+            #count[fromAct].update({('and',toAct):sum([F[fromAct][item] for item in toAct])*log.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
+            #count[fromAct].update({('or',toAct):sum([F[fromAct][item] for item in toAct])*(1-log.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct].update({('and',toAct):sum([F[fromAct][item]/(len(toAct)-1) for item in toAct])*log.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct].update({('or',toAct):sum([F[fromAct][item]/(len(toAct)-1) for item in toAct])*(1-log.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
         for fromAct in count.keys():
-            total=sum(count[fromAct].values())
+            total=1#sum(count[fromAct].values())
             prob[fromAct]={toAct:count[fromAct][toAct]/total for toAct in count[fromAct].keys() if count[fromAct][toAct]>0}
         
         if acumulate:
@@ -163,7 +165,7 @@ class Log(object):
 class AntColony(object):
     def __init__(self, dist:dict, route:dict, startAct:dict, endAct:dict):
         self.heuristic = copy.deepcopy(dist)
-        self.route = copy.deepcopy(route)
+        #self.route = copy.deepcopy(route)
         self.phero = self.startPheromone()
         self.start = copy.deepcopy(startAct)
         self.end = copy.deepcopy(endAct)
@@ -186,20 +188,21 @@ class AntColony(object):
                 phero[key][value]=phero[key][value]+g_perc[index]
         self.phero = phero
         
-    def probability(self):
+    def probability(self, alpha=1, beta=1, acumulate=True):
         matriz=copy.deepcopy(self.heuristic)
         phero=self.phero
         heuristic=self.heuristic
         for fromAct in matriz.keys():
             for toAct in matriz[fromAct].keys():
-                matriz[fromAct][toAct]=phero[fromAct][toAct] * heuristic[fromAct][toAct]
+                matriz[fromAct][toAct]=(phero[fromAct][toAct]**alpha) * (heuristic[fromAct][toAct]**beta)
             total=sum(matriz[fromAct].values())
             matriz[fromAct]={key:value/total for key, value in matriz[fromAct].items()}
-        for fromAct in matriz.keys(): #Acumulate probability
-            acum=0
-            for key, value in matriz[fromAct].items():
-                acum+=value
-                matriz[fromAct][key]=acum
+        if acumulate:
+            for fromAct in matriz.keys(): #Acumulate probability
+                acum=0
+                for key, value in matriz[fromAct].items():
+                    acum+=value
+                    matriz[fromAct][key]=acum
         return matriz
     
     def createSolutions(self, start:list, final:list, quantity=1):
@@ -207,7 +210,7 @@ class AntColony(object):
         actInit=start #list(self.start.keys())
         actEnd= final #list(self.end.keys())
         prob=self.probability()
-        
+        prob2=self.probability(beta=2, acumulate=False)
         for ant in range(quantity):
             graph=dict()
             if len(actInit)>1:
@@ -226,7 +229,7 @@ class AntColony(object):
             #rest of activities
             for act in step[1]:
                 if act in prob.keys():
-                    tupla=self.chooseAct(act, prob[act])
+                    tupla=self.chooseAct(act, prob[act], prob2[act])
                     if act not in graph.keys():
                         graph[act]=tupla
             
@@ -240,7 +243,7 @@ class AntColony(object):
                         if act not in graph.keys():
                             if act in prob.keys():
                             #if act not in actEnd:
-                                temporal[act]=self.chooseAct(act, prob[act])
+                                temporal[act]=self.chooseAct(act, prob[act], prob2[act])
                                 count+=1
                             elif act not in actEnd:
                                 print("violation {}".format(act))
@@ -254,9 +257,9 @@ class AntColony(object):
             ants[ant]=graph
         return ants
     
-    def chooseAct(self, act:str, subprob:dict):
+    def chooseAct(self, act:str, subprob:dict, subprob2:dict, limit=0.2):
         random=np.random.random(size=2)
-        if random[0]>0.3:
+        if random[0]>limit:
             for key, value in subprob.items():
                 if random[1]<=value:
                     tupla=key
@@ -264,6 +267,7 @@ class AntColony(object):
             lista=list(subprob.keys())
             ind=np.random.randint(len(lista))
             tupla=lista[ind]
+            tupla=max(subprob2, key=subprob2.get)
         return tupla
 
 def accuracity(ant:dict, traces:list, endTask):
@@ -305,13 +309,14 @@ def check(kind, tasks, pos, trace):
             if (sum(mask)>0)and (sum(mask)<len(mask)): result=True
     return result
     
-log=Log('hospital.csv')
+#log=Log('hospital.csv')
+log=Log('log_base.csv')
 activities=log.getStartEnd()
 F=log.direct1()
 route=log.getRoute(combinations=4)
-prob=log.getInfo(combinations=4)
+heuristic=log.getInfo(combinations=4)
 final={key: value for key, value in log.end.items() if value/sum(log.end.values())>0.01}
-colonia=AntColony(prob, route, log.start, final)
+colonia=AntColony(heuristic, route, log.start, final)
 phero=colonia.phero
 matriz=colonia.probability()
 #ants=colonia.createSolutions(100)
