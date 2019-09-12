@@ -31,7 +31,7 @@ class Log(object):
                 caseid = row[0]
                 task = row[1]
                 user = row[2]
-                timestamp = datetime.datetime.strptime(row[3], '%d/%m/%y %H:%M')#'%Y/%m/%d %H:%M:%S.%f'
+                timestamp = datetime.datetime.strptime(row[3], '%Y/%m/%d %H:%M:%S.%f')#'%Y/%m/%d %H:%M:%S.%f' '%d/%m/%y %H:%M'
                 if caseid not in log:
                     log[caseid] = []
                 event = (task, user, timestamp)
@@ -117,17 +117,7 @@ class Log(object):
             for i in range(1,min(combinations,count+1)):
                 route[ai].extend(list(it.combinations(list(F[ai].keys()),i)))
         return route
-    
-#    def filterRoute(self, endtask, combinations=100):
-#        route = self.getRoute(combinations)
-#        routeKeys = list(route.keys())
-#        for toAct, fromAct in route.items():
-#            for comb in from fromAct:
-#                for act in comb:
-#                    None
-#        
-#        return route
-    
+   
     def getInfo(self, acumulate=False, combinations=100):
         route=self.getRoute(combinations)
         F=self.direct1()
@@ -135,12 +125,12 @@ class Log(object):
         count=dict()
         for fromAct in route.keys():
             count[fromAct]={('dir',toAct):F[fromAct][toAct[0]] for toAct in route[fromAct] if len(toAct)==1}
-            #count[fromAct].update({('and',toAct):sum([F[fromAct][item] for item in toAct])*log.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
-            #count[fromAct].update({('or',toAct):sum([F[fromAct][item] for item in toAct])*(1-log.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
-            count[fromAct].update({('and',toAct):sum([F[fromAct][item]/(len(toAct)-1) for item in toAct])*log.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
-            count[fromAct].update({('or',toAct):sum([F[fromAct][item]/(len(toAct)-1) for item in toAct])*(1-log.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
+            #count[fromAct].update({('and',toAct):sum([F[fromAct][item] for item in toAct])*self.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
+            #count[fromAct].update({('or',toAct):sum([F[fromAct][item] for item in toAct])*(1-self.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct].update({('and',toAct):sum([F[fromAct][item]/(len(toAct)) for item in toAct])*self.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct].update({('or',toAct):sum([F[fromAct][item]/(len(toAct)) for item in toAct])*(1-self.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
         for fromAct in count.keys():
-            total=1#sum(count[fromAct].values())
+            total=sum(count[fromAct].values())
             prob[fromAct]={toAct:count[fromAct][toAct]/total for toAct in count[fromAct].keys() if count[fromAct][toAct]>0}
         
         if acumulate:
@@ -179,16 +169,21 @@ class AntColony(object):
         phero=self.phero
         for key in phero.keys(): #reduce pheromone
             for subkey, value in phero[key].items():
-                new_val=value-rho
-                if new_val <0.05: new_val=0.05
-                phero[key][subkey]=new_val
+                phero[key][subkey]=value*(1-rho)
         g_perc=[x*tau for x in accu]#pheromone to add per ant
         for index, ant in enumerate(ants):
             for key, value in ant.items():
                 phero[key][value]=phero[key][value]+g_perc[index]
         self.phero = phero
-        
-    def probability(self, alpha=1, beta=1, acumulate=True):
+
+    def localUpdatepheromone(self, ants, sigma:float, initial:float):
+        phero=self.phero
+        for key in phero.keys(): #reduce pheromone
+            for subkey, value in phero[key].items():
+                phero[key][subkey]=value*(1-sigma)+sigma*initial
+        self.phero = phero
+
+    def probability(self, alpha=3, beta=1, acumulate=True):
         matriz=copy.deepcopy(self.heuristic)
         phero=self.phero
         heuristic=self.heuristic
@@ -218,7 +213,6 @@ class AntColony(object):
             else:
                 ind=0
             step=actInit[ind] #Choose start task
-            #graph['/start/']=('dir',(step,)) #temporaly this support and/or split initial
             random=np.random.random()
             for key, value in prob[step].items():
                 if random<=value:
@@ -257,7 +251,7 @@ class AntColony(object):
             ants[ant]=graph
         return ants
     
-    def chooseAct(self, act:str, subprob:dict, subprob2:dict, limit=0.2):
+    def chooseAct(self, act:str, subprob:dict, subprob2:dict, limit=0.05):
         random=np.random.random(size=2)
         if random[0]>limit:
             for key, value in subprob.items():
@@ -309,27 +303,17 @@ def check(kind, tasks, pos, trace):
             if (sum(mask)>0)and (sum(mask)<len(mask)): result=True
     return result
     
-#log=Log('hospital.csv')
-log=Log('log_base.csv')
-activities=log.getStartEnd()
-F=log.direct1()
-route=log.getRoute(combinations=4)
-heuristic=log.getInfo(combinations=4)
-final={key: value for key, value in log.end.items() if value/sum(log.end.values())>0.01}
-colonia=AntColony(heuristic, route, log.start, final)
-phero=colonia.phero
-matriz=colonia.probability()
-#ants=colonia.createSolutions(100)
-antPaper={'NEW':('or',('DELETE', 'CHANGE DIAGN', 'FIN')), 
-         'FIN':('dir',('RELEASE',)), 
-         'RELEASE':('or',('CODE NOK','CODE OK')),
-         'CODE NOK':('dir',('BILLED',)),
-         'CODE OK':('or',('BILLED','STORNO')),
-         'STORNO':('dir',('REJECT',)),
-         'REJECT':('dir',('REOPEN',)),
-         'REOPEN':('dir',('DELETE',)),
-         'CHANGED DIAGN':('dir',('FIN',)),
-         }
-trazas=list(log.trace().values())
-print(accuracity(antPaper, trazas, final))
+
+# antPaper={'NEW':('or',('DELETE', 'CHANGE DIAGN', 'FIN')), 
+#          'FIN':('dir',('RELEASE',)), 
+#          'RELEASE':('or',('CODE NOK','CODE OK')),
+#          'CODE NOK':('dir',('BILLED',)),
+#          'CODE OK':('or',('BILLED','STORNO')),
+#          'STORNO':('dir',('REJECT',)),
+#          'REJECT':('dir',('REOPEN',)),
+#          'REOPEN':('dir',('DELETE',)),
+#          'CHANGED DIAGN':('dir',('FIN',)),
+#          }
+# trazas=list(log.trace().values())
+# print(accuracity(antPaper, trazas, final))
 
