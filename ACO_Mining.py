@@ -13,15 +13,12 @@ class ACO(object):
         self.alpha=alpha
         self.ant_cant= ant_cant
         self.generation = generation
-        
-    #def _update_feromone(self):
-        
-    #def solve(self):
 
 class Log(object):
     def __init__(self, path:str):
         self.path=path
         self.log, self.activity  = self.log_import()
+        self.start, self.end = self.StartEnd()
         
     def log_import(self):
     
@@ -34,8 +31,7 @@ class Log(object):
                 caseid = row[0]
                 task = row[1]
                 user = row[2]
-                #timestamp = datetime.datetime.strptime(row[3], '%Y/%m/%d %H:%M:%S.%f')
-                timestamp = datetime.datetime.strptime(row[3], '%d/%m/%y %H:%M')
+                timestamp = datetime.datetime.strptime(row[3], '%Y/%m/%d %H:%M:%S.%f')#'%Y/%m/%d %H:%M:%S.%f' '%d/%m/%y %H:%M'
                 if caseid not in log:
                     log[caseid] = []
                 event = (task, user, timestamp)
@@ -55,7 +51,21 @@ class Log(object):
                     order[caseid] = [x[0] for x in self.log[caseid]]
         return order
                 
-    
+    def StartEnd(self):
+        initial=[x[0] for x in self.trace().values()]
+        start=dict()
+        for i in initial:
+            if i not in start:
+                start[i]=0
+            start[i]+=1
+        
+        final=[x[-1] for x in self.trace().values()]
+        end=dict()
+        for i in final:
+            if i not in end:
+                end[i]=0
+            end[i]+=1
+        return start, end
     def direct(self):
         F = dict()
         for caseid in self.log:
@@ -68,6 +78,15 @@ class Log(object):
                     F[ai][aj] = 0
                 F[ai][aj] += 1
         return F
+    
+    def direct1(self, prob=0.005):
+        size=len(self.log)
+        F = self.direct()
+        F1={key:{subkey:value for subkey, value in F[key].items() if (F[key][subkey]/size)>prob} for key in F.keys()}
+        toDel=[key for key in F1.keys() if len(F1[key])<1]
+        for key in toDel:
+            del F1[key]
+        return F1
     
     def getStartEnd(self):
         stAct = [k for k,v in self.activity.items() if v==0]
@@ -87,282 +106,238 @@ class Log(object):
                     dist[ai]=dict()
                 dist[ai][aj]=F[ai][aj]/total
         return dist
-    def getRoute(self):
-        F=self.direct()
+    
+    def getRoute(self, combinations=100):
+        F=self.direct1()
         route=dict()
         for ai in F.keys():
             if ai not in route:
                 route[ai]=list()
             count= len(F[ai].keys())
-            for i in range(1,count+1):
+            for i in range(1,min(combinations,count+1)):
                 route[ai].extend(list(it.combinations(list(F[ai].keys()),i)))
         return route
     
-    def getInfo(self):
-        route=copy.deepcopy(self.getRoute())
-        F=copy.deepcopy(self.direct())
+#    def filterRoute(self, endtask, combinations=100):
+#        route = self.getRoute(combinations)
+#        routeKeys = list(route.keys())
+#        for toAct, fromAct in route.items():
+#            for comb in from fromAct:
+#                for act in comb:
+#                    None
+#        
+#        return route
+    
+    def getInfo(self, acumulate=False, combinations=100):
+        route=self.getRoute(combinations)
+        F=self.direct1()
         prob=dict()
-        for ai in route.keys():
-            if ai not in prob.keys():
-                prob[ai]=[0]*len(route[ai])
-            for i in range(len(route[ai])):
-                acts=route[ai][i]
-                for j in range(len(acts)):
-                    fkey=acts[j]
-                    prob[ai][i]+=F[ai][fkey]
-        for ai in prob.keys():
-            total=sum(prob[ai])
-            for i in range(len(prob[ai])):
-                if (len(route[ai][i])==1):
-                    prob[ai][i]=prob[ai][i]/total
-                else:
-                    lista=route[ai][i]
-                    value=prob[ai][i]/total
-                    prob[ai][i]=[x * value for x in self.splitTask(F, lista, ai)]
+        count=dict()
+        for fromAct in route.keys():
+            count[fromAct]={('dir',toAct):F[fromAct][toAct[0]] for toAct in route[fromAct] if len(toAct)==1}
+            #count[fromAct].update({('and',toAct):sum([F[fromAct][item] for item in toAct])*self.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
+            #count[fromAct].update({('or',toAct):sum([F[fromAct][item] for item in toAct])*(1-self.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct].update({('and',toAct):sum([F[fromAct][item]/(len(toAct)) for item in toAct])*self.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
+            count[fromAct].update({('or',toAct):sum([F[fromAct][item]/(len(toAct)) for item in toAct])*(1-self.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
+        for fromAct in count.keys():
+            total=1#sum(count[fromAct].values())
+            prob[fromAct]={toAct:count[fromAct][toAct]/total for toAct in count[fromAct].keys() if count[fromAct][toAct]>0}
+        
+        if acumulate:
+            for fromAct in prob.keys():
+                acum=0
+                for key, value in prob[fromAct].items():
+                    acum+=value
+                    prob[fromAct][key]=acum
         return prob
     
-    def splitTask(self, F:dict, act:list, a:str):
-        prob=[0]*2
-        if(act[0] in F.keys() and act[1] in F.keys() and act[0] in F[act[1]].keys() and act[1] in F[act[0]].keys()):
-            num=F[act[0]][act[1]]+F[act[1]][act[0]]
+    def splitTask(self, fromAct, toAct:tuple, F:dict):
+        tasks=list()
+        for act in toAct:
+            tasks.append(F[fromAct][act])
+        coeff=np.std(tasks)/np.mean(tasks)
+        if coeff>0.3:
+            relation=0
         else:
-            num=0
-        den=F[a][act[0]]+F[a][act[1]]+1
-        prob[0]=num/den #And probabilitiy
-        prob[1]=1-prob[0] #or probability
-        return prob
-    
-    def getInfoAcum(self):
-        prob=self.getInfo()
-        for ai in prob.keys():
-            acum=0
-            for i in range(len(prob[ai])):
-                if (isinstance(prob[ai][i], list)):
-                    split=list()
-                    for j in prob[ai][i]:
-                        acum+=j
-                        split.append(acum)
-                    prob[ai][i]=split
-                else:
-                    acum+=prob[ai][i]
-                    prob[ai][i]=acum
-        return prob
-    
-    def convertList(self, dic:dict):
-        for ai in dic.keys():
-            i=0
-            while(i<len(dic[ai])):
-            #for i in range(len(dic[ai])):
-                if(isinstance(dic[ai][i],list)):
-                    for j in range(len(dic[ai][i])):
-                        dic[ai].insert(i+j+1, dic[ai][i][j])
-                    del dic[ai][i]
-                i+=1
-        return dic
-    
-    def convertRoute(self, dic:dict):#revisar
-        dic=copy.deepcopy(dic)
-        relation=copy.deepcopy(dic)
-        for key, value in dic.items():
-            if(len(value)>1):
-                count=0
-                for i in value:
-                    if (len(i)==1):
-                        count+=1
-                par=len(dic[key][count:])
-                dic[key].extend(dic[key][count:])
-                relation[key]=[0]*count
-                relation[key].extend([1]*par)
-                relation[key].extend([2]*par)
-            else:
-                relation[key]=[0]
-        return dic, relation
+            relation=1-coeff
+        return relation
+   
 class AntColony(object):
-    def __init__(self, dist:dict, route:dict, relation:dict, startAct:list, endAct:list):
-        self.heuristic = dict(dist.copy())
-        self.route = copy.deepcopy(route)
-        self.relation = copy.deepcopy(relation)
+    def __init__(self, dist:dict, route:dict, startAct:dict, endAct:dict):
+        self.heuristic = copy.deepcopy(dist)
+        #self.route = copy.deepcopy(route)
         self.phero = self.startPheromone()
-        self.start = startAct
-        self.end = endAct
+        self.start = copy.deepcopy(startAct)
+        self.end = copy.deepcopy(endAct)
         
     def startPheromone(self, value=0.5):
         pheromone=copy.deepcopy(self.heuristic)
-        for ai in pheromone.keys():
-            for i in range(len(pheromone[ai])):
-                if (isinstance(pheromone[ai][i], list)):
-                    split=list()
-                    for j in pheromone[ai][i]:
-                        split.append(value)
-                    pheromone[ai][i]=split
-                else:
-                    pheromone[ai][i]=value
+        for fromAct in pheromone.keys():
+            pheromone[fromAct]={key:value for key, old in pheromone[fromAct].items()}
         return pheromone
-    
-    def updatePheromone(self, ants, accu:list, route:dict, rho=0.01, tau=0.01):
+    def updatePheromone(self, ants, accu:list, rho=0.01, tau=0.01):
         phero=self.phero
-        for i in phero.keys(): #evaporation
-            phero[i]=[x-rho for x in phero[i]]
-        sol=ants[0]#Route
-        rel=ants[1]#kind of route
-        g_perc=[x*tau for x in accu]
-        for i in range(len(sol)):#new pheromone
-            for key in sol[i].keys():
-                value=sol[i][key]
-                j=0
-                for item in value:
-                    if(len(item)>1):
-                        type_split=rel[i][key][j]
-                        j+=1
-                        if type_split==1: #And
-                            phero[key][2]+=g_perc[i]
-                        else: #or
-                            phero[key][3]+=g_perc[i]
-                    else:
-                        pos=[list(x) for x in route[key]].index(item)
-                        phero[key][pos]+=g_perc[i]
-        self.phero=phero
-        
-    
-    def probability(self):
+        # for key in phero.keys(): #reduce pheromone
+        #     for subkey, value in phero[key].items():
+        #         new_val=value*(1-rho)
+        #         phero[key][subkey]=new_val
+        g_perc=[x*tau for x in accu]#pheromone to add per ant
+        for index, ant in enumerate(ants):
+            for key, value in ant.items():
+                phero[key][value]=phero[key][value]*(1-rho)+g_perc[index]
+        self.phero = phero
+
+    def localUpdatepheromone(self, ants, sigma:float, initial:float):
+        phero=self.phero
+        # for key in phero.keys(): #reduce pheromone
+        #     for subkey, value in phero[key].items():
+        #         phero[key][subkey]=value*(1-sigma)+sigma*initial
+        for ant in ants:
+            for key, value in ant.items():
+                phero[key][value]=phero[key][value]*(1-sigma)+sigma*initial
+        self.phero = phero
+
+    def probability(self, alpha=.8, beta=.8, acumulate=True):#1,1
         matriz=copy.deepcopy(self.heuristic)
-        suma=copy.deepcopy(self.heuristic)
-        for ai in self.heuristic.keys():
-            suma[ai]=0
-            for i in range(len(self.heuristic[ai])):
-                suma[ai]+=self.heuristic[ai][i]*self.phero[ai][i]
-        for ai in self.heuristic.keys():
-            prev=0
-            for i in range(len(self.heuristic[ai])):
-                matriz[ai][i]=self.heuristic[ai][i]*self.phero[ai][i]/suma[ai]+prev
-                prev=matriz[ai][i]
+        phero=self.phero
+        heuristic=self.heuristic
+        for fromAct in matriz.keys():
+            for toAct in matriz[fromAct].keys():
+                matriz[fromAct][toAct]=(phero[fromAct][toAct]**alpha) * (heuristic[fromAct][toAct]**beta)
+            total=sum(matriz[fromAct].values())
+            matriz[fromAct]={key:value/total for key, value in matriz[fromAct].items()}
+        if acumulate:
+            for fromAct in matriz.keys(): #Acumulate probability
+                acum=0
+                for key, value in matriz[fromAct].items():
+                    acum+=value
+                    matriz[fromAct][key]=acum
         return matriz
     
-    def createSolution(self, quantity):
+    def createSolutions(self, start:list, final:list, alpha=1, beta=1, quantity=1):
         ants=[None]*quantity
-        ant2=[None]*quantity
-        actSE=self.start
-        route=self.route #Get path
-        relation=self.relation
-        prob=self.probability() #Get prob per route
-        for p in range(quantity):
+        actInit=start #list(self.start.keys())
+        actEnd= final #list(self.end.keys())
+        prob=self.probability(alpha=alpha, beta=beta)
+        prob2=self.probability(beta=2, acumulate=False)
+        for ant in range(quantity):
             graph=dict()
-            rel=dict()
-            ant=['a']#Routine for first element
-            step=ant[-1]
-            for j in ant:
-                step=j
-                for i in step:
-                    if i not in actSE[1]:
-                        random=self.choose(prob[i])
-                        part=route[i][random]
-                        rel_ind=relation[i][random]
-                        if i not in graph.keys():
-                            graph[i]=list()
-                            rel[i]=list()
-                        new=[str(x) for x in part]
-                        if new not in  graph[i]:
-                            graph[i].append(new)
-                            rel[i].append(rel_ind)
-                            ant.append(part)
-            ants[p]=graph
-            ant2[p]=rel
-        return ants, ant2
-     #Create que tipo de relación es           
-    
-    def choose(self, lista:list):
-        """Get a random index form acumulative list.
-        
-        Args:
-            param1 (list): list of probabilities
-        Returns:
-            int: Position choose element."""
-        num=np.random.rand()
-        for i in lista:
-            if i>num:
-                ind=lista.index(i)
-                break            
-        return ind
-
-def accuracity(ant, rel, log):
-    count=0
-    
-    for trace in list(log.trace().values()):
-        complete=True
-        for index, element in enumerate(trace): #check element-by-element in trace
-            if element in ant.keys(): #Check if element exist in ant
-                for i in ant[element]:
-                    ind=ant[element].index(i)
-                    if(rel[element][ind]<2):#Direct & and
-                        for j in i:
-                            #print("(%s,%s - %s )" % (element, j, check(element, j, trace)))
-                            complete = complete and check(element, j, trace)
-                    else:#Or
-                        #print("(%s,%s - %s )" % (element, i, check_or(index, i, trace)))
-                        complete = complete and check_or(index,i,trace)
+            if len(actInit)>1:
+                ind=np.random.randint(len(actInit))
             else:
-                complete = complete and element in log.getStartEnd()[1]
-        #print(complete)
+                ind=0
+            step=actInit[ind] #Choose start task
+            random=np.random.random()
+            for key, value in prob[step].items():
+                if random<=value:
+                    graph[step]=key
+                    step=key
+                    break
+            
+            #rest of activities
+            for act in step[1]:
+                if act in prob.keys():
+                    tupla=self.chooseAct(act, prob[act], prob2[act])
+                    if act not in graph.keys():
+                        graph[act]=tupla
+            
+            allconected=False
+            while(not allconected):#            
+                #Check not-end task
+                temporal=dict() #to save pairs key, value
+                count=0
+                for tasks in graph.values():
+                    for act in tasks[1]:
+                        if act not in graph.keys():
+                            if act in prob.keys():
+                            #if act not in actEnd:
+                                temporal[act]=self.chooseAct(act, prob[act], prob2[act])
+                                count+=1
+                            elif act not in actEnd:
+                                print("violation {}".format(act))
+                #Add temporal to graph
+                for key, value in temporal.items():
+                    graph[key]=value
+                if count==0:
+                    allconected=True
+                            
+            
+            ants[ant]=graph
+        return ants
     
+    def chooseAct(self, act:str, subprob:dict, subprob2:dict, limit=0.05):
+        random=np.random.random(size=2)
+        if random[0]>limit:
+            for key, value in subprob.items():
+                if random[1]<=value:
+                    tupla=key
+        else:
+            lista=list(subprob.keys())
+            ind=np.random.randint(len(lista))
+            tupla=lista[ind]
+            tupla=max(subprob2, key=subprob2.get)
+        return tupla
+
+def accuracity(ant:dict, traces:list, endTask):
+    result=list()
+    for trace in traces:
+        complete=True
+        for index, element in enumerate(trace):
+            if index+1 < len(trace):
+                if element in ant.keys():
+                    kind, tasks =ant[element] #Split kind of relation and activity
+                    complete=complete and check(kind, tasks, index, trace)
+                    if not complete: break
+                else:
+                    if element not in endTask.keys():
+                        complete=False
+            else:
+                if trace[-1] not in endTask.keys():
+                    complete=False
+        result.append(complete)
+        complete=True
+    return sum(result)/len(result)
+
+def check(kind, tasks, pos, trace):
+    result=False
+    if kind=='dir':
+        if trace[pos+1]==tasks[0]: result=True
+    if kind=='and':
+        ind=len(tasks)
+        if pos+1+ind<len(trace):
+            subtrace=trace[pos+1:pos+ind+1]
+            mask=[act in subtrace for act in tasks]
+            if sum(mask)==len(mask): result=True
+    if kind=='or':
+        ind=len(tasks)
+        limit=min(pos+ind+1,len(trace))
+        if pos+1<len(trace):
+            subtrace=trace[pos+1:limit]
+            mask=[act in subtrace for act in tasks]
+            if (sum(mask)>0)and (sum(mask)<len(mask)): result=True
+    return result
     
-        #Check if was good fitness    
-        if complete == True:
-            count+=1
-    per=count/len(log.trace().values())
-    return per
+# #log=Log('hospital.csv')
+# log=Log('log_base.csv')
+# activities=log.getStartEnd()
+# F=log.direct1()
+# route=log.getRoute(combinations=4)
+# heuristic=log.getInfo(combinations=4)
+# final={key: value for key, value in log.end.items() if value/sum(log.end.values())>0.01}
+# colonia=AntColony(heuristic, route, log.start, final)
+# phero=colonia.phero
+# matriz=colonia.probability()
+# #ants=colonia.createSolutions(100)
+# antPaper={'NEW':('or',('DELETE', 'CHANGE DIAGN', 'FIN')), 
+#          'FIN':('dir',('RELEASE',)), 
+#          'RELEASE':('or',('CODE NOK','CODE OK')),
+#          'CODE NOK':('dir',('BILLED',)),
+#          'CODE OK':('or',('BILLED','STORNO')),
+#          'STORNO':('dir',('REJECT',)),
+#          'REJECT':('dir',('REOPEN',)),
+#          'REOPEN':('dir',('DELETE',)),
+#          'CHANGED DIAGN':('dir',('FIN',)),
+#          }
+# trazas=list(log.trace().values())
+# print(accuracity(antPaper, trazas, final))
 
-def check(first, second, lista:list):
-    result=False
-    if first in lista and second in lista:
-        result=lista.index(first)<lista.index(second)
-    return result
-
-def check_or(index,split:list, lista:list):
-    result=False
-    for item in split:
-        if index+3 <= len(lista):
-            result=(lista[index+1] in split)|(lista[index+2] in split) #is posible Xor o or activities
-        elif index+2<=len(lista):
-            result=lista[index+1] in split
-    return result
-log=Log('log_base.csv')
-#log=Log('hospital.csv')
-activities=log.getStartEnd()
-F=log.direct()
-route=log.getRoute()
-prob=log.getInfo()
-heuristic=log.convertList(log.getInfoAcum())
-convertido, relation=log.convertRoute(route)
-colonia=AntColony(heuristic,convertido, relation, activities, activities[1])
-AntProb=colonia.probability()
-phero=colonia.startPheromone(0.5)
-#colonia.choose(AntProb['b'])
-sol, rel=colonia.createSolution(100)
-accu=list()
-for itera in range(100):
-    accu=list()
-    sol, rel=colonia.createSolution(100)
-    for i in range(len(sol)):
-        accu.append(accuracity(sol[i],rel[i],log))
-    colonia.updatePheromone([sol, rel], accu, route)
-print(colonia.phero)
-trazas=list(log.trace().values())
-
-best=[{
-      'a':[['b']],
-      'b':[['c','d']],
-      'd':[['g','e']],
-      'e':[['f']],
-      'f':[['h','g']],
-      'g':[['h','e']]
-      },{    
-      'a':[0],
-      'b':[2],
-      'd':[2],
-      'e':[0],
-      'f':[2],
-      'g':[2]
-      }];
-print(accuracity(best[0],best[1],log))
-#for i in range(len(sol)):
-#    print(accuracity(sol[i],rel[i],log))
