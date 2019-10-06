@@ -117,7 +117,17 @@ class Log(object):
             for i in range(1,min(combinations,count+1)):
                 route[ai].extend(list(it.combinations(list(F[ai].keys()),i)))
         return route
-   
+    
+#    def filterRoute(self, endtask, combinations=100):
+#        route = self.getRoute(combinations)
+#        routeKeys = list(route.keys())
+#        for toAct, fromAct in route.items():
+#            for comb in from fromAct:
+#                for act in comb:
+#                    None
+#        
+#        return route
+    
     def getInfo(self, acumulate=False, combinations=100):
         route=self.getRoute(combinations)
         F=self.direct1()
@@ -130,7 +140,7 @@ class Log(object):
             count[fromAct].update({('and',toAct):sum([F[fromAct][item]/(len(toAct)) for item in toAct])*self.splitTask(fromAct, toAct, F) for toAct in route[fromAct] if len(toAct)>1})
             count[fromAct].update({('or',toAct):sum([F[fromAct][item]/(len(toAct)) for item in toAct])*(1-self.splitTask(fromAct, toAct, F)) for toAct in route[fromAct] if len(toAct)>1})
         for fromAct in count.keys():
-            total=sum(count[fromAct].values())
+            total=1#sum(count[fromAct].values())
             prob[fromAct]={toAct:count[fromAct][toAct]/total for toAct in count[fromAct].keys() if count[fromAct][toAct]>0}
         
         if acumulate:
@@ -167,23 +177,27 @@ class AntColony(object):
         return pheromone
     def updatePheromone(self, ants, accu:list, rho=0.01, tau=0.01):
         phero=self.phero
-        for key in phero.keys(): #reduce pheromone
-            for subkey, value in phero[key].items():
-                phero[key][subkey]=value*(1-rho)
+        # for key in phero.keys(): #reduce pheromone
+        #     for subkey, value in phero[key].items():
+        #         new_val=value*(1-rho)
+        #         phero[key][subkey]=new_val
         g_perc=[x*tau for x in accu]#pheromone to add per ant
         for index, ant in enumerate(ants):
             for key, value in ant.items():
-                phero[key][value]=phero[key][value]+g_perc[index]
+                phero[key][value]=phero[key][value]*(1-rho)+g_perc[index]
         self.phero = phero
 
     def localUpdatepheromone(self, ants, sigma:float, initial:float):
         phero=self.phero
-        for key in phero.keys(): #reduce pheromone
-            for subkey, value in phero[key].items():
-                phero[key][subkey]=value*(1-sigma)+sigma*initial
+        # for key in phero.keys(): #reduce pheromone
+        #     for subkey, value in phero[key].items():
+        #         phero[key][subkey]=value*(1-sigma)+sigma*initial
+        for ant in ants:
+            for key, value in ant.items():
+                phero[key][value]=phero[key][value]*(1-sigma)+sigma*initial
         self.phero = phero
 
-    def probability(self, alpha=3, beta=1, acumulate=True):
+    def probability(self, alpha=1, beta=1, acumulate=True):#1,1
         matriz=copy.deepcopy(self.heuristic)
         phero=self.phero
         heuristic=self.heuristic
@@ -200,11 +214,11 @@ class AntColony(object):
                     matriz[fromAct][key]=acum
         return matriz
     
-    def createSolutions(self, start:list, final:list, quantity=1):
+    def createSolutions(self, start:list, final:list, alpha=1, beta=1, quantity=1):
         ants=[None]*quantity
         actInit=start #list(self.start.keys())
         actEnd= final #list(self.end.keys())
-        prob=self.probability()
+        prob=self.probability(alpha, beta)
         prob2=self.probability(beta=2, acumulate=False)
         for ant in range(quantity):
             graph=dict()
@@ -302,18 +316,3 @@ def check(kind, tasks, pos, trace):
             mask=[act in subtrace for act in tasks]
             if (sum(mask)>0)and (sum(mask)<len(mask)): result=True
     return result
-    
-
-# antPaper={'NEW':('or',('DELETE', 'CHANGE DIAGN', 'FIN')), 
-#          'FIN':('dir',('RELEASE',)), 
-#          'RELEASE':('or',('CODE NOK','CODE OK')),
-#          'CODE NOK':('dir',('BILLED',)),
-#          'CODE OK':('or',('BILLED','STORNO')),
-#          'STORNO':('dir',('REJECT',)),
-#          'REJECT':('dir',('REOPEN',)),
-#          'REOPEN':('dir',('DELETE',)),
-#          'CHANGED DIAGN':('dir',('FIN',)),
-#          }
-# trazas=list(log.trace().values())
-# print(accuracity(antPaper, trazas, final))
-
