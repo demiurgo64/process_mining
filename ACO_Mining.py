@@ -197,7 +197,7 @@ class AntColony(object):
                 phero[key][value]=phero[key][value]*(1-sigma)+sigma*initial
         self.phero = phero
 
-    def probability(self, alpha=1, beta=1, acumulate=True):#1,1
+    def probability(self, alpha=.8, beta=.8, acumulate=True):#1,1
         matriz=copy.deepcopy(self.heuristic)
         phero=self.phero
         heuristic=self.heuristic
@@ -218,7 +218,7 @@ class AntColony(object):
         ants=[None]*quantity
         actInit=start #list(self.start.keys())
         actEnd= final #list(self.end.keys())
-        prob=self.probability(alpha, beta)
+        prob=self.probability(alpha=alpha, beta=beta)
         prob2=self.probability(beta=2, acumulate=False)
         for ant in range(quantity):
             graph=dict()
@@ -316,3 +316,28 @@ def check(kind, tasks, pos, trace):
             mask=[act in subtrace for act in tasks]
             if (sum(mask)>0)and (sum(mask)<len(mask)): result=True
     return result
+    
+# #log=Log('hospital.csv')
+# log=Log('log_base.csv')
+# activities=log.getStartEnd()
+# F=log.direct1()
+# route=log.getRoute(combinations=4)
+# heuristic=log.getInfo(combinations=4)
+# final={key: value for key, value in log.end.items() if value/sum(log.end.values())>0.01}
+# colonia=AntColony(heuristic, route, log.start, final)
+# phero=colonia.phero
+# matriz=colonia.probability()
+# #ants=colonia.createSolutions(100)
+# antPaper={'NEW':('or',('DELETE', 'CHANGE DIAGN', 'FIN')), 
+#          'FIN':('dir',('RELEASE',)), 
+#          'RELEASE':('or',('CODE NOK','CODE OK')),
+#          'CODE NOK':('dir',('BILLED',)),
+#          'CODE OK':('or',('BILLED','STORNO')),
+#          'STORNO':('dir',('REJECT',)),
+#          'REJECT':('dir',('REOPEN',)),
+#          'REOPEN':('dir',('DELETE',)),
+#          'CHANGED DIAGN':('dir',('FIN',)),
+#          }
+# trazas=list(log.trace().values())
+# print(accuracity(antPaper, trazas, final))
+
